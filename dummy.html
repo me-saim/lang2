@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LinguaLink - Multilingual Messaging</title>
+    <link href="./output.css" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-app-compat.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-auth-compat.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-firestore-compat.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-messaging-compat.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import "tailwindcss";
+        .chat-bubble {
+            animation: slideUp 0.3s ease-out;
+        }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .online-indicator {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .notification-badge {
+            animation: bounce 1s infinite;
+        }
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+            40% { transform: translateY(-10px); }
+            60% { transform: translateY(-5px); }
+        }
+        .typing-indicator {
+            animation: typing 1.5s infinite;
+        }
+        @keyframes typing {
+            0%, 60%, 100% { opacity: 0.3; }
+            30% { opacity: 1; }
+        }
+        .connection-status {
+            transition: all 0.3s ease;
+        }
+        .connection-status.connected {
+            background: linear-gradient(45deg, #10b981, #059669);
+        }
+        .connection-status.disconnected {
+            background: linear-gradient(45deg, #ef4444, #dc2626);
+        }
+        .connection-status.connecting {
+            background: linear-gradient(45deg, #f59e0b, #d97706);
+        }
+        .message-status {
+            transition: opacity 0.3s ease;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 min-h-screen">
+    
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="fixed inset-0 bg-gradient-to-br from-purple-900 to-indigo-900 flex items-center justify-center z-50">
+        <div class="text-center">
+            <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-white mb-4 mx-auto"></div>
+            <h2 class="text-white text-2xl font-bold">LinguaLink</h2>
+            <p class="text-purple-200">Connecting Languages, Connecting Hearts</p>
+        </div>
+    </div>
+
+    <!-- Connection Status Bar -->
+    <div id="connectionStatus" class="fixed top-0 left-0 right-0 z-40 connection-status connecting px-4 py-2 text-white text-center text-sm font-medium">
+        <span id="connectionText">Connecting to server...</span>
+    </div>
+
+    <!-- Authentication Screen -->
+    <div id="authScreen" class="hidden fixed inset-0 bg-gradient-to-br from-purple-900 to-indigo-900 flex items-center justify-center">
+        <div class="bg-white/10 backdrop-blur-lg rounded-3xl p-8 w-full max-w-md mx-4 border border-white/20 mt-12">
+            <div class="text-center mb-8">
+                <h1 class="text-4xl font-bold text-white mb-2">LinguaLink</h1>
+                <p class="text-purple-200">Connect across languages</p>
+            </div>
+            
+            <div id="loginForm" class="space-y-6">
+                <div>
+                    <input type="email" id="loginEmail" placeholder="Email" 
+                           class="w-full px-4 py-3 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-purple-400">
+                </div>
+                <div>
+                    <input type="password" id="loginPassword" placeholder="Password" 
+                           class="w-full px-4 py-3 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-purple-400">
+                </div>
+                <button onclick="signIn()" class="w-full bg-gradient-to-r from-purple-500 to-indigo-500 text-white py-3 rounded-lg font-semibold hover:from-purple-600 hover:to-indigo-600 transition duration-300">
+                    Sign In
+                </button>
+                <button onclick="signInWithGoogle()" class="w-full bg-white text-gray-800 py-3 rounded-lg font-semibold hover:bg-gray-100 transition duration-300 flex items-center justify-center">
+                    <i class="fab fa-google mr-2"></i> Continue with Google
+                </button>
+                <p class="text-center text-white/70">
+                    Don't have an account? 
+                    <span onclick="showSignUpForm()" class="text-purple-300 cursor-pointer hover:text-purple-200">Sign up</span>
+                </p>
+            </div>
+
+            <div id="signupForm" class="hidden space-y-6">
+                <div>
+                    <input type="text" id="signupName" placeholder="Full Name" 
+                           class="w-full px-4 py-3 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-purple-400">
+                </div>
+                <div>
+                    <input type="email" id="signupEmail" placeholder="Email" 
+                           class="w-full px-4 py-3 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-purple-400">
+                </div>
+                <div>
+                    <input type="password" id="signupPassword" placeholder="Password" 
+                           class="w-full px-4 py-3 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-purple-400">
+                </div>
+                <div>
+                    <select id="signupLanguage" class="w-full px-4 py-3 rounded-lg bg-white/20 border border-white/30 text-white focus:outline-none focus:ring-2 focus:ring-purple-400">
+                        <option value="en" class="text-gray-800">English</option>
+                        <option value="hi" class="text-gray-800">हिन्दी (Hindi)</option>
+                        <option value="es" class="text-gray-800">Español (Spanish)</option>
+                        <option value="fr" class="text-gray-800">Français (French)</option>
+                        <option value="de" class="text-gray-800">Deutsch (German)</option>
+                        <option value="zh" class="text-gray-800">中文 (Chinese)</option>
+                        <option value="ja" class="text-gray-800">日本語 (Japanese)</option>
+                        <option value="ar" class="text-gray-800">العربية (Arabic)</option>
+                    </select>
+                </div>
+                <button onclick="signUp()" class="w-full bg-gradient-to-r from-purple-500 to-indigo-500 text-white py-3 rounded-lg font-semibold hover:from-purple-600 hover:to-indigo-600 transition duration-300">
+                    Sign Up
+                </button>
+                <p class="text-center text-white/70">
+                    Already have an account? 
+                    <span onclick="showLoginForm()" class="text-purple-300 cursor-pointer hover:text-purple-200">Sign in</span>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="mainApp" class="hidden flex h-screen pt-10">
+        <!-- Sidebar -->
+        <div class="w-80 bg-white/10 backdrop-blur-lg border-r border-white/20 flex flex-col">
+            <!-- Header -->
+            <div class="p-6 border-b border-white/20">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-2xl font-bold text-white">LinguaLink</h2>
+                    <div class="flex space-x-2">
+                        <button onclick="showSettings()" class="p-2 rounded-lg bg-white/20 text-white hover:bg-white/30 transition duration-300">
+                            <i class="fas fa-cog"></i>
+                        </button>
+                        <button onclick="signOut()" class="p-2 rounded-lg bg-white/20 text-white hover:bg-white/30 transition duration-300">
+                            <i class="fas fa-sign-out-alt"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- User Profile -->
+                <div class="flex items-center space-x-3">
+                    <div class="relative">
+                        <div class="w-12 h-12 bg-gradient-to-r from-purple-400 to-indigo-400 rounded-full flex items-center justify-center">
+                            <span id="userInitials" class="text-white font-bold text-lg"></span>
+                        </div>
+                        <div id="userOnlineStatus" class="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white"></div>
+                    </div>
+                    <div>
+                        <p id="userName" class="text-white font-semibold"></p>
+                        <p id="userLanguage" class="text-purple-200 text-sm"></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation -->
+            <div class="flex border-b border-white/20">
+                <button onclick="showChats()" id="chatsTab" class="flex-1 py-3 px-4 text-white font-semibold bg-white/20">
+                    <i class="fas fa-comment mr-2"></i>Chats
+                    <span id="totalUnreadBadge" class="hidden ml-2 px-2 py-1 bg-red-500 text-white text-xs rounded-full"></span>
+                </button>
+                <button onclick="showFriends()" id="friendsTab" class="flex-1 py-3 px-4 text-white/70 font-semibold hover:bg-white/10">
+                    <i class="fas fa-users mr-2"></i>Friends
+                    <span id="onlineFriendsCount" class="ml-2 px-2 py-1 bg-green-500 text-white text-xs rounded-full">0</span>
+                </button>
+            </div>
+
+            <!-- Search -->
+            <div class="p-4">
+                <div class="relative">
+                    <input type="text" id="searchInput" placeholder="Search users..." 
+                           class="w-full px-4 py-2 pl-10 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-purple-400">
+                    <i class="fas fa-search absolute left-3 top-3 text-white/70"></i>
+                </div>
+            </div>
+
+            <!-- Content Area -->
+            <div class="flex-1 overflow-y-auto">
+                <!-- Chats List -->
+                <div id="chatsList" class="p-4 space-y-2">
+                    <!-- Chat items will be populated here -->
+                </div>
+
+                <!-- Friends List -->
+                <div id="friendsList" class="hidden p-4 space-y-2">
+                    <!-- Friend items will be populated here -->
+                </div>
+
+                <!-- Search Results -->
+                <div id="searchResults" class="hidden p-4 space-y-2">
+                    <!-- Search results will be populated here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Area -->
+        <div class="flex-1 flex flex-col">
+            <!-- Chat Header -->
+            <div id="chatHeader" class="hidden bg-white/10 backdrop-blur-lg border-b border-white/20 p-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <div class="relative">
+                            <div class="w-10 h-10 bg-gradient-to-r from-green-400 to-blue-400 rounded-full flex items-center justify-center">
+                                <span id="chatUserInitials" class="text-white font-bold"></span>
+                            </div>
+                            <div id="chatUserOnlineStatus" class="absolute -bottom-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-white"></div>
+                        </div>
+                        <div>
+                            <h3 id="chatUserName" class="text-white font-semibold"></h3>
+                            <p id="chatUserStatus" class="text-green-300 text-sm">
+                                <span id="chatUserStatusText">Online</span>
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <!-- Chat Actions -->
+                    <div class="flex items-center space-x-2">
+                        <button onclick="toggleTypingIndicator()" class="p-2 rounded-lg bg-white/20 text-white hover:bg-white/30 transition duration-300" title="Toggle typing indicator">
+                            <i class="fas fa-keyboard"></i>
+                        </button>
+                        <button onclick="clearChat()" class="p-2 rounded-lg bg-white/20 text-white hover:bg-white/30 transition duration-300" title="Clear chat">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Welcome Screen -->
+            <div id="welcomeScreen" class="flex-1 flex items-center justify-center">
+                <div class="text-center">
+                    <div class="w-24 h-24 bg-gradient-to-r from-purple-400 to-indigo-400 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <i class="fas fa-language text-white text-3xl"></i>
+                    </div>
+                    <h3 class="text-2xl font-bold text-white mb-2">Welcome to LinguaLink</h3>
+                    <p class="text-purple-200 mb-4">Connect with people from around the world</p>
+                    <div class="flex items-center justify-center space-x-4 text-sm text-purple-300">
+                        <div class="flex items-center">
+                            <i class="fas fa-globe mr-2"></i>
+                            <span>Real-time translation</span>
+                        </div>
+                        <div class="flex items-center">
+                            <i class="fas fa-bolt mr-2"></i>
+                            <span>Instant messaging</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Messages Area -->
+            <div id="messagesArea" class="hidden flex-1 overflow-y-auto p-4 space-y-4">
+                <!-- Messages will be populated here -->
+            </div>
+
+            <!-- Typing Indicator -->
+            <div id="typingIndicator" class="hidden px-4 py-2">
+                <div class="flex items-center space-x-2 text-white/70">
+                    <div class="flex space-x-1">
+                        <div class="w-2 h-2 bg-white/50 rounded-full typing-indicator" style="animation-delay: 0s"></div>
+                        <div class="w-2 h-2 bg-white/50 rounded-full typing-indicator" style="animation-delay: 0.2s"></div>
+                        <div class="w-2 h-2 bg-white/50 rounded-full typing-indicator" style="animation-delay: 0.4s"></div>
+                    </div>
+                    <span id="typingUserName">Someone</span>
+                    <span>is typing...</span>
+                </div>
+            </div>
+
+            <!-- Message Input -->
+            <div id="messageInput" class="hidden bg-white/10 backdrop-blur-lg border-t border-white/20 p-4">
+                <div class="flex space-x-3">
+                    <input type="text" id="messageText" placeholder="Type your message..." 
+                           class="flex-1 px-4 py-3 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-purple-400">
+                    <button id="sendButton" onclick="sendMessage()" class="px-6 py-3 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-lg hover:from-purple-600 hover:to-indigo-600 transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+                <div id="messageStatus" class="mt-2 text-xs text-white/50 message-status opacity-0">
+                    <span id="messageStatusText"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div class="bg-white/10 backdrop-blur-lg rounded-3xl p-8 w-full max-w-md mx-4 border border-white/20">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-2xl font-bold text-white">Settings</h3>
+                <button onclick="hideSettings()" class="text-white/70 hover:text-white">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <div class="space-y-6">
+                <div>
+                    <label class="block text-white font-semibold mb-2">Language Preference</label>
+                    <select id="settingsLanguage" class="w-full px-4 py-3 rounded-lg bg-white/20 border border-white/30 text-white focus:outline-none focus:ring-2 focus:ring-purple-400">
+                        <option value="en" class="text-gray-800">English</option>
+                        <option value="hi" class="text-gray-800">हिन्दी (Hindi)</option>
+                        <option value="es" class="text-gray-800">Español (Spanish)</option>
+                        <option value="fr" class="text-gray-800">Français (French)</option>
+                        <option value="de" class="text-gray-800">Deutsch (German)</option>
+                        <option value="zh" class="text-gray-800">中文 (Chinese)</option>
+                        <option value="ja" class="text-gray-800">日本語 (Japanese)</option>
+                        <option value="ar" class="text-gray-800">العربية (Arabic)</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label class="block text-white font-semibold mb-2">Display Name</label>
+                    <input type="text" id="settingsName" 
+                           class="w-full px-4 py-3 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-purple-400">
+                </div>
+
+                <div>
+                    <label class="block text-white font-semibold mb-2">WebSocket Server</label>
+                    <input type="text" id="settingsWebSocketUrl" value="wss://lingualink-ws.herokuapp.com" 
+                           class="w-full px-4 py-3 rounded-lg bg-white/20 border border-white/30 text-white placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-purple-400">
+                    <p class="text-xs text-white/50 mt-1">Leave default for demo server</p>
+                </div>
+
+                <div class="flex space-x-3">
+                    <button onclick="saveSettings()" class="flex-1 bg-gradient-to-r from-purple-500 to-indigo-500 text-white py-3 rounded-lg font-semibold hover:from-purple-600 hover:to-indigo-600 transition duration-300">
+                        Save Changes
+                    </button>
+                    <button onclick="hideSettings()" class="flex-1 bg-white/20 text-white py-3 rounded-lg font-semibold hover:bg-white/30 transition duration-300">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification -->
+    <div id="notification" class="hidden fixed top-16 right-4 bg-gradient-to-r from-purple-500 to-indigo-500 text-white px-6 py-3 rounded-lg shadow-lg z-50">
+        <div class="flex items-center space-x-2">
+            <i class="fas fa-check-circle"></i>
+            <span id="notificationText"></span>
+        </div>
+    </div>
+
+    <script>
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyAwXL7yDqBFADd2r3xzgo2RajlLJ4XF5NI",
+            authDomain: "lang-bang.firebaseapp.com",
+            projectId: "lang-bang",
+            storageBucket: "lang-bang.firebasestorage.app",
+            messagingSenderId: "984482484844",
+            appId: "1:984482484844:web:c2bcb17b8c2baf68253e49",
+            measurementId: "G-2JMGQZ6TPB"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        let messaging;
+
+        // WebSocket variables
+        let ws = null;
+        let wsReconnectAttempts = 0;
+        let wsMaxReconnectAttempts = 5;
+        let wsReconnectInterval = 1000;
+        let wsHeartbeatInterval = null;
+        let wsUrl = 'wss://echo.websocket.org'; // Demo WebSocket server
+
+        // Global variables
+        let currentUser = null;
+        let currentChatId = null;
+        let currentChatUser = null;
+        let unsubscribeChats = null;
+        let unsubscribeMessages = null;
+        let typingTimer = null;
+        let isTyping = false;
+        let onlineUsers = new Set();
+        let messageQueue = [];
+
+        // Language codes to names mapping
+        const languageNames = {
+            'en': 'English',
+            'hi': 'हिन्दी',
+            'es': 'Español',
+            'fr': 'Français',
+            'de': 'Deutsch',
+            'zh': '中文',
+            'ja': '日本語',
+            'ar': 'العربية'
+        };
+
+        // Initialize app
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                document.getElementById('loadingScreen').classList.add('hidden');
+                
+                auth.onAuthStateChanged(user => {
+                    if (user) {
+                        currentUser = user;
+                        initializeApp();
+                    } else {
+                        showAuthScreen();
+                    }
+                });
+            }, 1500);
+        });
+
+        // WebSocket functions
+        function initializeWebSocket() {
+            if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
+                return;
+            }
+
+            updateConnectionStatus('connecting', 'Connecting to server...');
+            
+            try {
+                ws = new WebSocket(wsUrl);
+                
+                ws.onopen = function(event) {
+                    console.log('WebSocket connected');
+                    updateConnectionStatus('connected', 'Connected');
+                    wsReconnectAttempts = 0;
+                    
+                    // Send authentication
+                    sendWebSocketMessage({
+                        type: 'auth',
+                        userId: currentUser.uid,
+                        userData: {
+                            name: document.getElementById('userName').textContent,
+                            language: getCurrentUserLanguage()
+                        }
+                    });
+                    
+                    // Start heartbeat
+                    startHeartbeat();
+                    
+                    // Process queued messages
+                    processMessageQueue();
+                };
+                
+                ws.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleWebSocketMessage(data);
+                    } catch (error) {
+                        console.error('Error parsing WebSocket message:', error);
+                    }
+                };
+                
+                ws.onclose = function(event) {
+                    console.log('WebSocket disconnected:', event.code, event.reason);
+                    updateConnectionStatus('disconnected', 'Disconnected');
+                    stopHeartbeat();
+                    
+                    // Attempt to reconnect
+                    if (wsReconnectAttempts < wsMaxReconnectAttempts) {
+                        wsReconnectAttempts++;
+                        setTimeout(() => {
+                            initializeWebSocket();
+                        }, wsReconnectInterval * wsReconnectAttempts);
+                    }
+                };
+                
+                ws.onerror = function(error) {
+                    console.error('WebSocket error:', error);
+                    updateConnectionStatus('disconnected', 'Connection error');
+                };
+                
+            } catch (error) {
+                console.error('Error initializing WebSocket:', error);
+                updateConnectionStatus('disconnected', 'Failed to connect');
+            }
+        }
+
+        function sendWebSocketMessage(message) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(message));
+                return true;
+            } else {
+                // Queue message for later
+                messageQueue.push(message);
+                return false;
+            }
+        }
+
+        function handleWebSocketMessage(data) {
+            switch (data.type) {
+                case 'message':
+                    handleIncomingMessage(data);
+                    break;
+                case 'typing':
+                    handleTypingIndicator(data);
+                    break;
+                case 'user_online':
+                    handleUserOnline(data);
+                    break;
+                case 'user_offline':
+                    handleUserOffline(data);
+                    break;
+                case 'message_delivered':
+                    handleMessageDelivered(data);
+                    break;
+                case 'message_read':
+                    handleMessageRead(data);
+                    break;
+                case 'pong':
+                    // Heartbeat response
+                    break;
+                default:
+                    console.log('Unknown WebSocket message type:', data.type);
+            }
+        }
+
+        function handleIncomingMessage(data) {
+            if (data.chatId === currentChatId) {
+                renderMessage({
+                    ...data.message,
+                    timestamp: new Date(data.message.timestamp)
+                });
+                
+                // Scroll to bottom
+                const messagesArea = document.getElementById('messagesArea');
+                messagesArea.scrollTop = messagesArea.scrollHeight;
+                
+                // Send read receipt
+                sendWebSocketMessage({
+                    type: 'message_read',
+                    messageId: data.message.id,
+                    chatId: data.chatId,
+                    userId: currentUser.uid
+                });
+            } else {
+                // Update unread count in chat list
+                updateUnreadCount(data.chatId, 1);
+            }
+            
+            // Show notification if not in current chat
+            if (data.chatId !== currentChatId) {
+                showNotification(`New message from ${data.senderName}`);
+            }
+        }
+
+        function handleTypingIndicator(data) {
+            if (data.chatId === currentChatId && data.userId !== currentUser.uid) {
+                const typingIndicator = document.getElementById('typingIndicator');
+                const typingUserName = document.getElementById('typingUserName');
+                
+                if (data.isTyping) {
+                    typingUserName.textContent = data.userName;
+                    typingIndicator.classList.remove('hidden');
+                } else {
+                    typingIndicator.classList.add('hidden');
+                }
+            }
+        }
+
+        function handleUserOnline(data) {
+            onlineUsers.add(data.userId);
+            updateUserOnlineStatus(data.userId, true);
+            updateOnlineFriendsCount();
+        }
+
+        function handleUserOffline(data) {
+            onlineUsers.delete(data.userId);
+            updateUserOnlineStatus(data.userId, false);
+            updateOnlineFriendsCount();
+        }
+
+        function handleMessageDelivered(data) {
+            updateMessageStatus(data.messageId, 'delivered');
+        }
+
+        function handleMessageRead(data) {
+            updateMessageStatus(data.messageId, 'read');
+        }
+
+        function startHeartbeat() {
+            wsHeartbeatInterval = setInterval(() => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    sendWebSocketMessage({ type: 'ping' });
+                }
+            }, 30000); // 30 seconds
+        }
+
+        function stopHeartbeat() {
+            if (wsHeartbeatInterval) {
+                clearInterval(wsHeartbeatInterval);
+                wsHeartbeatInterval = null;
+            }
+        }
+
+        function processMessageQueue() {
+            while (messageQueue.length > 0) {
+                const message = messageQueue.shift();
+                sendWebSocketMessage(message);
+            }
+        }
+
+        function updateConnectionStatus(status, text) {
+            const statusElement = document.getElementById('connectionStatus');
+            const textElement = document.getElementById('connectionText');
+            
+            statusElement.className = `fixed top-0 left-0 right-0 z-40 connection-status ${status} px-4 py-2 text-white text-center text-sm font-medium`;
+            textElement.textContent = text;
+        }
+
+        // Authentication functions
+        function showAuthScreen() {
+            document.getElementById('authScreen').classList.remove('hidden');
+            document.getElementById('mainApp').classList.add('hidden');
+        }
+
+        function showLoginForm() {
+            document.getElementById('loginForm').classList.remove('hidden');
+            document.getElementById('signupForm').classList.add('hidden');
+        }
+
+        function showSignUpForm() {
+            document.getElementById('loginForm').classList.add('hidden');
+            document.getElementById('signupForm').classList.remove('hidden');
+        }
+
+        async function signIn() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            
+            if (!email || !password) {
+                showNotification('Please fill in all fields');
+                return;
+            }
+            
+            try {
+                await auth.signInWithEmailAndPassword(email, password);
+                showNotification('Welcome back!');
+            } catch (error) {
+                showNotification('Login failed: ' + error.message);
+            }
+        }
+
+        async function signUp() {
+            const name = document.getElementById('signupName').value;
+            const email = document.getElementById('signupEmail').value;
+            const password = document.getElementById('signupPassword').value;
+            const language = document.getElementById('signupLanguage').value;
+            
+            if (!name || !email || !password) {
+                showNotification('Please fill in all fields');
+                return;
+            }
+            
+            try {
+                const result = await auth.createUserWithEmailAndPassword(email, password);
+                
+                // Save user profile
+                await db.collection('users').doc(result.user.uid).set({
+                    name: name,
+                    email: email,
+                    language: language,
+                    createdAt: new Date(),
+                    online: true
+                });
+                
+                showNotification('Account created successfully!');
+            } catch (error) {
+                showNotification('Sign up failed: ' + error.message);
+            }
+        }
+
+        function signOut() {
+            auth.signOut();
+            if (ws) {
+                ws.close();
+            }
+            showNotification('Signed out successfully');
+        }
+
+        // App initialization
+        async function initializeApp() {
+            document.getElementById('authScreen').classList.add('hidden');
+            document.getElementById('mainApp').classList.remove('hidden');
+            
+            // Load user profile
+            await loadUserProfile();
+            
+            // Initialize WebSocket
+            initializeWebSocket();
+            
+            // Load chats
+            loadChats();
+            
+            // Set up search
+            setupSearch();
+            
+            // Set up message input
+            setupMessageInput();
+            
+            // Set user as online
+            await updateUserOnlineStatus(currentUser.uid, true);
+        }
+
+        async function loadUserProfile() {
+            try {
+                const userDoc = await db.collection('users').doc(currentUser.uid).get();
+                if (userDoc.exists) {
+                    const userData = userDoc.data();
+                    document.getElementById('userName').textContent = userData.name;
+                    document.getElementById('userLanguage').textContent = languageNames[userData.language] || 'English';
+                    document.getElementById('userInitials').textContent = getInitials(userData.name);
+                } else {
+                    // Create user profile if doesn't exist
+                    const userData = {
+                        name: currentUser.displayName || 'User',
+                        email: currentUser.email,
+                        language: 'en',
+                        createdAt: new Date(),
+                        online: true
+                    };
+                    await db.collection('users').doc(currentUser.uid).set(userData);
+                    document.getElementById('userName').textContent = userData.name;
+                    document.getElementById('userLanguage').textContent = 'English';
+                    document.getElementById('userInitials').textContent = getInitials(userData.name);
+                }
+            } catch (error) {
+                console.error('Error loading user profile:', error);
+            }
+        }
+
+        function getInitials(name) {
+            return name.split(' ').map(word => word[0]).join('').toUpperCase().substring(0, 2);
+        }
+
+        // Chat functions
+        function loadChats() {
+            const chatsRef = db.collection('chats')
+                .where('participants', 'array-contains', currentUser.uid)
+                .orderBy('lastMessageTime', 'desc');
+            
+            unsubscribeChats = chatsRef.onSnapshot(snapshot => {
+                const chatsList = document.getElementById('chatsList');
+                chatsList.innerHTML = '';
+                
+                snapshot.forEach(doc => {
+                    const chat = { id: doc.id, ...doc.data() };
+                    renderChatItem(chat);
+                });
+                
+                updateTotalUnreadBadge();
+            });
+        }
+
+        function renderChatItem(chat) {
+            const otherUserId = chat.participants.find(id => id !== currentUser.uid);
+            
+            // Get other user's info
+            db.collection('users').doc(otherUserId).get().then(userDoc => {
+                if (userDoc.exists) {
+                    const userData = userDoc.data();
+                    const chatItem = createChatItemElement(chat, userData);
+                    document.getElementById('chatsList').appendChild(chatItem);
+                }
+            });
+        }
+
+        function createChatItemElement(chat, userData) {
+            const div = document.createElement('div');
+            div.className = 'flex items-center space-x-3 p-3 rounded-lg bg-white/10 hover:bg-white/20 cursor-pointer transition duration-300';
+            div.onclick = () => openChat(chat.id, userData);
+            
+            const isOnline = onlineUsers.has(userData.id);
+            const unreadCount = chat.unreadCounts && chat.unreadCounts[currentUser.uid] || 0;
+            
+            div.innerHTML = `
+                <div class="relative">
+                    <div class="w-12 h-12 bg-gradient-to-r from-green-400 to-blue-400 rounded-full flex items-center justify-center">
+                        <span class="text-white font-bold">${getInitials(userData.name)}</span>
+                    </div>
+                    <div class="absolute -bottom-1 -right-1 w-3 h-3 ${isOnline ? 'bg-green-400' : 'bg-gray-400'} rounded-full border-2 border-white"></div>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center justify-between">
+                        <h4 class="text-white font-semibold truncate">${userData.name}</h4>
+                        ${unreadCount > 0 ? `<span class="ml-2 px-2 py-1 bg-red-500 text-white text-xs rounded-full notification-badge">${unreadCount}</span>` : ''}
+                    </div>
+                    <p class="text-white/70 text-sm truncate">${chat.lastMessage || 'No messages yet'}</p>
+                    <p class="text-white/50 text-xs">${formatTime(chat.lastMessageTime)}</p>
+                </div>
+            `;
+            
+            return div;
+        }
+
+        async function openChat(chatId, userData) {
+            currentChatId = chatId;
+            currentChatUser = userData;
+            
+            // Update UI
+            document.getElementById('welcomeScreen').classList.add('hidden');
+            document.getElementById('chatHeader').classList.remove('hidden');
+            document.getElementById('messagesArea').classList.remove('hidden');
+            document.getElementById('messageInput').classList.remove('hidden');
+            
+            // Update chat header
+            document.getElementById('chatUserName').textContent = userData.name;
+            document.getElementById('chatUserInitials').textContent = getInitials(userData.name);
+            
+            const isOnline = onlineUsers.has(userData.id);
+            document.getElementById('chatUserStatusText').textContent = isOnline ? 'Online' : 'Offline';
+            document.getElementById('chatUserOnlineStatus').className = `absolute -bottom-1 -right-1 w-3 h-3 ${isOnline ? 'bg-green-400' : 'bg-gray-400'} rounded-full border-2 border-white`;
+            
+            // Load messages
+            loadMessages(chatId);
+            
+            // Mark messages as read
+            await markMessagesAsRead(chatId);
+        }
+
+        function loadMessages(chatId) {
+            if (unsubscribeMessages) {
+                unsubscribeMessages();
+            }
+            
+            const messagesRef = db.collection(`chats/${chatId}/messages`)
+                .orderBy('timestamp', 'asc')
+                .limit(50);
+            
+            unsubscribeMessages = messagesRef.onSnapshot(snapshot => {
+                const messagesArea = document.getElementById('messagesArea');
+                messagesArea.innerHTML = '';
+                
+                snapshot.forEach(doc => {
+                    const message = { id: doc.id, ...doc.data() };
+                    renderMessage(message);
+                });
+                
+                // Scroll to bottom
+                messagesArea.scrollTop = messagesArea.scrollHeight;
+            });
+        }
+
+        function renderMessage(message) {
+            const messagesArea = document.getElementById('messagesArea');
+            const isOwnMessage = message.senderId === currentUser.uid;
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `flex ${isOwnMessage ? 'justify-end' : 'justify-start'} chat-bubble`;
+            
+            const statusIcon = getMessageStatusIcon(message.status);
+            
+            messageDiv.innerHTML = `
+                <div class="max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${isOwnMessage ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white' : 'bg-white/20 text-white'}">
+                    ${message.originalText && message.originalText !== message.text ? 
+                        `<div class="text-xs opacity-70 mb-1">Original: ${message.originalText}</div>` : ''}
+                    <p class="text-sm">${message.text}</p>
+                    <div class="flex items-center justify-between mt-1">
+                        <span class="text-xs opacity-70">${formatTime(message.timestamp)}</span>
+                        ${isOwnMessage ? `<span class="text-xs ml-2">${statusIcon}</span>` : ''}
+                    </div>
+                </div>
+            `;
+            
+            messagesArea.appendChild(messageDiv);
+        }
+
+        function getMessageStatusIcon(status) {
+            switch (status) {
+                case 'sent': return '✓';
+                case 'delivered': return '✓✓';
+                case 'read': return '<span class="text-blue-300">✓✓</span>';
+                default: return '⏰';
+            }
+        }
+
+        async function sendMessage() {
+            const messageText = document.getElementById('messageText').value.trim();
+            if (!messageText || !currentChatId) return;
+            
+            const messageId = Date.now().toString();
+            const message = {
+                id: messageId,
+                text: messageText,
+                originalText: messageText,
+                senderId: currentUser.uid,
+                timestamp: new Date(),
+                status: 'sending'
+            };
+            
+            // Clear input
+            document.getElementById('messageText').value = '';
+            
+            // Show sending status
+            updateMessageStatus(messageId, 'sending');
+            
+            try {
+                // Save to Firestore
+                await db.collection(`chats/${currentChatId}/messages`).doc(messageId).set(message);
+                
+                // Update chat metadata
+                await db.collection('chats').doc(currentChatId).update({
+                    lastMessage: messageText,
+                    lastMessageTime: new Date(),
+                    [`unreadCounts.${currentChatUser.id}`]: firebase.firestore.FieldValue.increment(1)
+                });
+                
+                // Send via WebSocket
+                const success = sendWebSocketMessage({
+                    type: 'message',
+                    chatId: currentChatId,
+                    message: message,
+                    recipientId: currentChatUser.id
+                });
+                
+                updateMessageStatus(messageId, success ? 'sent' : 'failed');
+                
+            } catch (error) {
+                console.error('Error sending message:', error);
+                updateMessageStatus(messageId, 'failed');
+            }
+        }
+
+        function updateMessageStatus(messageId, status) {
+            // This would update the message status in the UI
+            // Implementation depends on how messages are tracked
+        }
+
+        async function markMessagesAsRead(chatId) {
+            try {
+                await db.collection('chats').doc(chatId).update({
+                    [`unreadCounts.${currentUser.uid}`]: 0
+                });
+            } catch (error) {
+                console.error('Error marking messages as read:', error);
+            }
+        }
+
+        // Search functions
+        function setupSearch() {
+            const searchInput = document.getElementById('searchInput');
+            searchInput.addEventListener('input', debounce(performSearch, 500));
+        }
+
+        async function performSearch() {
+            const query = document.getElementById('searchInput').value.trim().toLowerCase();
+            const searchResults = document.getElementById('searchResults');
+            
+            if (!query) {
+                searchResults.classList.add('hidden');
+                document.getElementById('chatsList').classList.remove('hidden');
+                document.getElementById('friendsList').classList.add('hidden');
+                return;
+            }
+            
+            try {
+                const usersSnapshot = await db.collection('users')
+                    .where('name', '>=', query)
+                    .where('name', '<=', query + '\uf8ff')
+                    .limit(10)
+                    .get();
+                
+                searchResults.innerHTML = '';
+                searchResults.classList.remove('hidden');
+                document.getElementById('chatsList').classList.add('hidden');
+                document.getElementById('friendsList').classList.add('hidden');
+                
+                usersSnapshot.forEach(doc => {
+                    if (doc.id !== currentUser.uid) {
+                        const userData = { id: doc.id, ...doc.data() };
+                        const userItem = createUserSearchItem(userData);
+                        searchResults.appendChild(userItem);
+                    }
+                });
+                
+            } catch (error) {
+                console.error('Error searching users:', error);
+            }
+        }
+
+        function createUserSearchItem(userData) {
+            const div = document.createElement('div');
+            div.className = 'flex items-center space-x-3 p-3 rounded-lg bg-white/10 hover:bg-white/20 cursor-pointer transition duration-300';
+            div.onclick = () => startChat(userData);
+            
+            const isOnline = onlineUsers.has(userData.id);
+            
+            div.innerHTML = `
+                <div class="relative">
+                    <div class="w-10 h-10 bg-gradient-to-r from-purple-400 to-indigo-400 rounded-full flex items-center justify-center">
+                        <span class="text-white font-bold text-sm">${getInitials(userData.name)}</span>
+                    </div>
+                    <div class="absolute -bottom-1 -right-1 w-3 h-3 ${isOnline ? 'bg-green-400' : 'bg-gray-400'} rounded-full border-2 border-white"></div>
+                </div>
+                <div>
+                    <h4 class="text-white font-semibold">${userData.name}</h4>
+                    <p class="text-white/70 text-sm">${languageNames[userData.language] || 'English'}</p>
+                </div>
+            `;
+            
+            return div;
+        }
+
+        async function startChat(userData) {
+            try {
+                // Check if chat already exists
+                const existingChatQuery = await db.collection('chats')
+                    .where('participants', 'array-contains', currentUser.uid)
+                    .get();
+                
+                let chatId = null;
+                existingChatQuery.forEach(doc => {
+                    const chat = doc.data();
+                    if (chat.participants.includes(userData.id)) {
+                        chatId = doc.id;
+                    }
+                });
+                
+                // Create new chat if doesn't exist
+                if (!chatId) {
+                    const newChatRef = await db.collection('chats').add({
+                        participants: [currentUser.uid, userData.id],
+                        createdAt: new Date(),
+                        lastMessage: '',
+                        lastMessageTime: new Date(),
+                        unreadCounts: {
+                            [currentUser.uid]: 0,
+                            [userData.id]: 0
+                        }
+                    });
+                    chatId = newChatRef.id;
+                }
+                
+                // Open the chat
+                await openChat(chatId, userData);
+                
+                // Clear search
+                document.getElementById('searchInput').value = '';
+                performSearch();
+                
+            } catch (error) {
+                console.error('Error starting chat:', error);
+                showNotification('Failed to start chat');
+            }
+        }
+
+        // Message input setup
+        function setupMessageInput() {
+            const messageInput = document.getElementById('messageText');
+            messageInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    sendMessage();
+                }
+            });
+            
+            messageInput.addEventListener('input', () => {
+                handleTyping();
+            });
+        }
+
+        function handleTyping() {
+            if (!currentChatId) return;
+            
+            if (!isTyping) {
+                isTyping = true;
+                sendWebSocketMessage({
+                    type: 'typing',
+                    chatId: currentChatId,
+                    userId: currentUser.uid,
+                    userName: document.getElementById('userName').textContent,
+                    isTyping: true
+                });
+            }
+            
+            // Clear existing timer
+            if (typingTimer) {
+                clearTimeout(typingTimer);
+            }
+            
+            // Set new timer
+            typingTimer = setTimeout(() => {
+                isTyping = false;
+                sendWebSocketMessage({
+                    type: 'typing',
+                    chatId: currentChatId,
+                    userId: currentUser.uid,
+                    isTyping: false
+                });
+            }, 1000);
+        }
+
+        // Navigation functions
+        function showChats() {
+            document.getElementById('chatsTab').className = 'flex-1 py-3 px-4 text-white font-semibold bg-white/20';
+            document.getElementById('friendsTab').className = 'flex-1 py-3 px-4 text-white/70 font-semibold hover:bg-white/10';
+            
+            document.getElementById('chatsList').classList.remove('hidden');
+            document.getElementById('friendsList').classList.add('hidden');
+            document.getElementById('searchResults').classList.add('hidden');
+        }
+
+        function showFriends() {
+            document.getElementById('friendsTab').className = 'flex-1 py-3 px-4 text-white font-semibold bg-white/20';
+            document.getElementById('chatsTab').className = 'flex-1 py-3 px-4 text-white/70 font-semibold hover:bg-white/10';
+            
+            document.getElementById('friendsList').classList.remove('hidden');
+            document.getElementById('chatsList').classList.add('hidden');
+            document.getElementById('searchResults').classList.add('hidden');
+            
+            loadFriends();
+        }
+
+        function loadFriends() {
+            // This would load and display friends list
+            // For demo purposes, we'll show online users
+            const friendsList = document.getElementById('friendsList');
+            friendsList.innerHTML = '<p class="text-white/70 text-center py-4">Friends feature coming soon!</p>';
+        }
+
+        // Settings functions
+        function showSettings() {
+            document.getElementById('settingsModal').classList.remove('hidden');
+            
+            // Load current settings
+            const userLanguage = getCurrentUserLanguage();
+            document.getElementById('settingsLanguage').value = userLanguage;
+            document.getElementById('settingsName').value = document.getElementById('userName').textContent;
+        }
+
+        function hideSettings() {
+            document.getElementById('settingsModal').classList.add('hidden');
+        }
+
+        async function saveSettings() {
+            const newLanguage = document.getElementById('settingsLanguage').value;
+            const newName = document.getElementById('settingsName').value.trim();
+            const newWsUrl = document.getElementById('settingsWebSocketUrl').value.trim();
+            
+            if (!newName) {
+                showNotification('Name cannot be empty');
+                return;
+            }
+            
+            try {
+                // Update user profile
+                await db.collection('users').doc(currentUser.uid).update({
+                    name: newName,
+                    language: newLanguage
+                });
+                
+                // Update UI
+                document.getElementById('userName').textContent = newName;
+                document.getElementById('userLanguage').textContent = languageNames[newLanguage];
+                document.getElementById('userInitials').textContent = getInitials(newName);
+                
+                // Update WebSocket URL if changed
+                if (newWsUrl !== wsUrl) {
+                    wsUrl = newWsUrl;
+                    if (ws) {
+                        ws.close();
+                    }
+                    setTimeout(() => initializeWebSocket(), 1000);
+                }
+                
+                hideSettings();
+                showNotification('Settings saved successfully');
+                
+            } catch (error) {
+                console.error('Error saving settings:', error);
+                showNotification('Failed to save settings');
+            }
+        }
+
+        function getCurrentUserLanguage() {
+            // Get from user profile or default to English
+            return 'en'; // This would be loaded from user data
+        }
+
+        // Utility functions
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        function formatTime(timestamp) {
+            if (!timestamp) return '';
+            
+            const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+            
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins}m ago`;
+            if (diffHours < 24) return `${diffHours}h ago`;
+            if (diffDays < 7) return `${diffDays}d ago`;
+            
+            return date.toLocaleDateString();
+        }
+
+        function showNotification(message) {
+            const notification = document.getElementById('notification');
+            const notificationText = document.getElementById('notificationText');
+            
+            notificationText.textContent = message;
+            notification.classList.remove('hidden');
+            
+            setTimeout(() => {
+                notification.classList.add('hidden');
+            }, 3000);
+        }
+
+        function updateTotalUnreadBadge() {
+            // This would calculate and update total unread count
+            // Implementation depends on chat data structure
+        }
+
+        function updateOnlineFriendsCount() {
+            const count = onlineUsers.size;
+            document.getElementById('onlineFriendsCount').textContent = count.toString();
+        }
+
+        function updateUserOnlineStatus(userId, isOnline) {
+            // This would update online status indicators in the UI
+            // Implementation depends on how users are displayed
+        }
+
+        function updateUnreadCount(chatId, increment) {
+            // This would update unread count for a specific chat
+            // Implementation depends on chat list structure
+        }
+
+        function clearChat() {
+            if (!currentChatId) return;
+            
+            if (confirm('Are you sure you want to clear this chat? This action cannot be undone.')) {
+                // Clear messages from Firestore
+                db.collection(`chats/${currentChatId}/messages`).get().then(snapshot => {
+                    const batch = db.batch();
+                    snapshot.docs.forEach(doc => {
+                        batch.delete(doc.ref);
+                    });
+                    return batch.commit();
+                }).then(() => {
+                    showNotification('Chat cleared successfully');
+                }).catch(error => {
+                    console.error('Error clearing chat:', error);
+                    showNotification('Failed to clear chat');
+                });
+            }
+        }
+
+        function toggleTypingIndicator() {
+            // This would toggle typing indicator for testing
+            const indicator = document.getElementById('typingIndicator');
+            indicator.classList.toggle('hidden');
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (currentUser) {
+                // Set user as offline
+                db.collection('users').doc(currentUser.uid).update({
+                    online: false,
+                    lastSeen: new Date()
+                });
+            }
+            
+            if (ws) {
+                ws.close();
+            }
+        });
+
+    </script>
+</body>
+</html>
